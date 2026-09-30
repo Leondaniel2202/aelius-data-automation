@@ -1,4 +1,3 @@
-import json
 import os
 from datetime import datetime
 from urllib.parse import urlencode
@@ -19,15 +18,15 @@ PHONE_COLUMN = "Telefonnummer"
 SENT_COLUMN = "Zwischenbericht verschickt"
 SENT_AT_COLUMN = "Zwischenbericht versendet am"
 
-FORM_NAME = "T1-B - Zwischenbefragung (ohne Mentor:in)"
+FORM_URL = "https://cloud.seatable.io/dtable/forms/396ef8a7-d532-4ebf-aa04-1efc8657651f/"
 
 META_GRAPH_API = "https://graph.facebook.com/v23.0"
 WHATSAPP_TEMPLATE_NAME = "zwischenbericht_template"
 WHATSAPP_TEMPLATE_LANGUAGE = "de"
 
-# Must be provided securely by the SeaTable Python environment / pipeline.
-WHATSAPP_TOKEN = os.environ["WHATSAPP_TOKEN"]
-WHATSAPP_PHONE_NUMBER_ID = os.environ["WHATSAPP_PHONE_NUMBER_ID"]
+# For SeaTable Cloud, set these directly in the script for now.
+WHATSAPP_TOKEN = "REPLACE_ME"
+WHATSAPP_PHONE_NUMBER_ID = "REPLACE_ME"
 
 
 # ============================================================
@@ -39,32 +38,6 @@ def get_base() -> Base:
     base = Base(context.api_token, context.server_url)
     base.auth()
     return base
-
-
-
-def get_forms() -> list[dict]:
-    response = requests.get(
-        f"{context.server_url.rstrip('/')}/api/v2.1/forms/",
-        headers={
-            "Authorization": f"Bearer {context.api_token}",
-        },
-        params={
-            "workspace_id_query": context.workspace_id,
-            "base_name": context.dtable_name,
-        },
-    )
-    response.raise_for_status()
-    return response.json()["form_list"]
-
-
-
-def get_form_url(forms: list[dict], form_name: str) -> str:
-    for form in forms:
-        config = json.loads(form["form_config"])
-        if config.get("form_name") == form_name:
-            return form["form_link"]
-
-    raise ValueError(f"Form not found: {form_name}")
 
 
 
@@ -156,9 +129,6 @@ def send_whatsapp_message(
 def main() -> None:
     base = get_base()
 
-    forms = get_forms()
-    form_url = get_form_url(forms, FORM_NAME)
-
     mentees = get_mentees_to_send(base)
 
     print(f"{len(mentees)} Mentees found")
@@ -168,7 +138,7 @@ def main() -> None:
         first_name = mentee.get(FIRST_NAME_COLUMN) or ""
         phone_number = mentee[PHONE_COLUMN]
 
-        personalized_url = build_form_url(form_url, mentee_id)
+        personalized_url = build_form_url(FORM_URL, mentee_id)
 
         send_whatsapp_message(
             phone_number=phone_number,
