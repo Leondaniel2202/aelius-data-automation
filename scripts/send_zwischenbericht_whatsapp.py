@@ -16,15 +16,14 @@ META_GRAPH_API = "https://graph.facebook.com/v23.0"
 MENTEES_TABLE = "Mentees"
 
 MENTEE_ID_COLUMN = "Mentee-ID"
+FIRST_NAME_COLUMN = "Vorname"
 PHONE_COLUMN = "Telefonnummer"
 SENT_COLUMN = "Zwischenbericht verschickt"
 
 FORM_NAME = "T1-B - Zwischenbefragung (ohne Mentor:in)"
 
-WHATSAPP_MESSAGE = (
-    "Hallo! Hier ist dein Zwischenbericht von Aelius:\n\n"
-    "{form_url}"
-)
+WHATSAPP_TEMPLATE_NAME = "zwischenbericht_template"
+WHATSAPP_TEMPLATE_LANGUAGE = "de"
 
 
 # ============================================================
@@ -44,6 +43,7 @@ WHATSAPP_PHONE_NUMBER_ID = os.environ["WHATSAPP_PHONE_NUMBER_ID"]
 # SeaTable authentication
 # ============================================================
 
+
 def get_seatable_access() -> dict:
     response = requests.get(
         f"{SEATABLE_SERVER}/api/v2.1/dtable/app-access-token/",
@@ -59,6 +59,7 @@ def get_seatable_access() -> dict:
 # ============================================================
 # SeaTable forms
 # ============================================================
+
 
 def get_forms(
     workspace_id: int,
@@ -78,6 +79,7 @@ def get_forms(
     response.raise_for_status()
 
     return response.json()["form_list"]
+
 
 
 def get_form_url(
@@ -101,6 +103,7 @@ def get_form_url(
     )
 
 
+
 def build_form_url(
     form_url: str,
     mentee_id: str,
@@ -119,6 +122,7 @@ def build_form_url(
 # ============================================================
 # SeaTable rows
 # ============================================================
+
 
 def get_column_mapping(
     base_token: str,
@@ -142,6 +146,7 @@ def get_column_mapping(
         column["key"]: column["name"]
         for column in response.json()["columns"]
     }
+
 
 
 def get_rows(
@@ -179,6 +184,7 @@ def get_rows(
     ]
 
 
+
 def get_mentees_to_send(
     base_token: str,
     base_uuid: str,
@@ -196,6 +202,7 @@ def get_mentees_to_send(
         and row.get(MENTEE_ID_COLUMN)
         and not row.get(SENT_COLUMN)
     ]
+
 
 
 def mark_as_sent(
@@ -230,26 +237,54 @@ def mark_as_sent(
 # WhatsApp
 # ============================================================
 
+
+def normalize_phone_number(phone_number: str) -> str:
+    return (
+        phone_number
+        .replace("+", "")
+        .replace("-", "")
+        .replace(" ", "")
+    )
+
+
+
 def send_whatsapp_message(
     phone_number: str,
-    message: str,
+    first_name: str,
+    form_url: str,
 ) -> None:
     response = requests.post(
-        f"{META_GRAPH_API}/"
-        f"{WHATSAPP_PHONE_NUMBER_ID}/messages",
+        f"{META_GRAPH_API}/{WHATSAPP_PHONE_NUMBER_ID}/messages",
         headers={
             "Authorization": f"Bearer {WHATSAPP_TOKEN}",
             "Content-Type": "application/json",
         },
         json={
             "messaging_product": "whatsapp",
-            "to": "31617327648",
+            "to": normalize_phone_number(phone_number),
             "type": "template",
             "template": {
-                "name": "zwischenbericht_template",
-                "language": {"code": "en_US"},
+                "name": WHATSAPP_TEMPLATE_NAME,
+                "language": {
+                    "code": WHATSAPP_TEMPLATE_LANGUAGE,
+                },
+                "components": [
+                    {
+                        "type": "body",
+                        "parameters": [
+                            {
+                                "type": "text",
+                                "text": first_name,
+                            },
+                            {
+                                "type": "text",
+                                "text": form_url,
+                            },
+                        ],
+                    }
+                ],
             },
-        }
+        },
     )
 
     response.raise_for_status()
@@ -258,6 +293,7 @@ def send_whatsapp_message(
 # ============================================================
 # Main
 # ============================================================
+
 
 def main() -> None:
     access = get_seatable_access()
@@ -292,6 +328,7 @@ def main() -> None:
 
         print(
             mentee[MENTEE_ID_COLUMN],
+            mentee.get(FIRST_NAME_COLUMN, ""),
             mentee[PHONE_COLUMN],
             personalized_url,
         )
@@ -309,6 +346,7 @@ def main() -> None:
 
     for mentee in mentees:
         mentee_id = mentee[MENTEE_ID_COLUMN]
+        first_name = mentee.get(FIRST_NAME_COLUMN) or ""
         phone_number = mentee[PHONE_COLUMN]
 
         personalized_url = build_form_url(
@@ -316,14 +354,11 @@ def main() -> None:
             mentee_id=mentee_id,
         )
 
-        message = WHATSAPP_MESSAGE.format(
-            form_url=personalized_url,
-        )
-
         try:
             send_whatsapp_message(
                 phone_number=phone_number,
-                message=message,
+                first_name=first_name,
+                form_url=personalized_url,
             )
 
             mark_as_sent(
