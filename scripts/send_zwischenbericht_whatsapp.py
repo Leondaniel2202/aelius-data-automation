@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime
 from urllib.parse import urlencode
 
 import requests
@@ -19,6 +20,7 @@ MENTEE_ID_COLUMN = "Mentee-ID"
 FIRST_NAME_COLUMN = "Vorname"
 PHONE_COLUMN = "Telefonnummer"
 SENT_COLUMN = "Zwischenbericht verschickt"
+SENT_AT_COLUMN = "Zwischenbericht versendet am"
 
 FORM_NAME = "T1-B - Zwischenbefragung (ohne Mentor:in)"
 
@@ -224,6 +226,9 @@ def mark_as_sent(
                     "row_id": mentee["_id"],
                     "row": {
                         SENT_COLUMN: True,
+                        SENT_AT_COLUMN: datetime.now().astimezone().isoformat(
+                            timespec="seconds"
+                        ),
                     },
                 }
             ],
