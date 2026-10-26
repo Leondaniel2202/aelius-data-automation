@@ -1,6 +1,6 @@
+from shared.common import build_form_url, normalize_phone_number, eligible_mentees
 import os
 from datetime import datetime
-from urllib.parse import urlencode
 
 import requests
 from seatable_api import Base, context
@@ -41,24 +41,8 @@ def get_base() -> Base:
 
 
 
-def build_form_url(form_url: str, mentee_id: str) -> str:
-    query = urlencode({"prefillHide_mentee_id": mentee_id})
-    separator = "&" if "?" in form_url else "?"
-    return f"{form_url}{separator}{query}"
-
-
-
 def get_mentees_to_send(base: Base) -> list[dict]:
-    rows = base.list_rows(MENTEES_TABLE)
-
-    return [
-        row
-        for row in rows
-        if row.get(PHONE_COLUMN)
-        and row.get(MENTEE_ID_COLUMN)
-        and not row.get(SENT_COLUMN)
-    ]
-
+    return eligible_mentees(base.list_rows(MENTEES_TABLE), PHONE_COLUMN, MENTEE_ID_COLUMN, SENT_COLUMN)
 
 
 def mark_as_sent(base: Base, mentee: dict) -> None:
@@ -75,16 +59,6 @@ def mark_as_sent(base: Base, mentee: dict) -> None:
 # ============================================================
 # WhatsApp
 # ============================================================
-
-
-def normalize_phone_number(phone_number: str) -> str:
-    return (
-        phone_number
-        .replace("+", "")
-        .replace("-", "")
-        .replace(" ", "")
-    )
-
 
 
 def send_whatsapp_message(
