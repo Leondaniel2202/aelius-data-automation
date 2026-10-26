@@ -1,14 +1,14 @@
 # Aelius SeaTable automations
 
-- `scripts/`: entry points (local REST and SeaTable-internal)
-- `shared/seatable_client.py`: lightweight SeaTable REST and internal adapters
-- `shared/whatsapp_client.py`: WhatsApp Cloud API requests
-- `shared/forms.py`: form lookup and personalized URLs
-- `build/`: standalone script bundler
+- `scripts/send_zwischenbericht_whatsapp.py`: the **only production script**, executed inside SeaTable
+- `shared/seatable_client.py`: SeaTable adapters and reusable row filtering
+- `shared/whatsapp_client.py`: Meta WhatsApp Cloud API client
+- `shared/forms.py`: form URL helpers
+- `build/bundle.py`: builds standalone Python scripts
 - `tests/`: offline unit tests
-- `dist/`: generated standalone scripts (gitignored)
+- `dist/`: generated scripts, ignored by Git
 
-From repository root:
+From the repository root:
 
 ```bash
 uv sync
@@ -16,8 +16,8 @@ uv run python -m unittest discover -s automation/tests -v
 uv run python automation/build/bundle.py
 ```
 
-The build generates `automation/dist/*.py`. GitHub Actions runs tests and uploads these files as downloadable artifacts. **Do not commit dist or insert real credentials into generated files.** No deployment to SeaTable or WhatsApp sending is performed by the build.
+The build produces `automation/dist/send_zwischenbericht_whatsapp.py`. GitHub Actions uploads the generated script as an artifact; it **does not automatically deploy or run it**.
 
-The builder inlines direct imports from `shared/*.py`; nested shared imports and aliases are deliberately unsupported. Local scripts use environment variables (`SEATABLE_TOKEN`, `SEATABLE_ACCOUNT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`). The internal SeaTable script uses `seatable_api.context` for its base and expects WhatsApp credentials from the runtime environment; verify your SeaTable Cloud runtime actually supports secure environment variables before executing. No secrets are bundled.
+The script uses `seatable_api.context` for SeaTable access and `shared.whatsapp_client.WhatsAppClient` for WhatsApp. It expects `WHATSAPP_TOKEN` and `WHATSAPP_PHONE_NUMBER_ID` in the execution environment. Verify that SeaTable Cloud supports securely supplying these before execution; never paste secrets into Git or generated artifacts.
 
-**Operational caution:** Internal script currently uses interactive confirmation and is not suitable for unattended schedules. Both scripts mark rows sent only after API acceptance, but a failure between WhatsApp acceptance and updating SeaTable can still cause duplicate sends on rerun. Test on a safe subset before using with real recipients.
+**Operational limitations:** The script currently prompts for interactive confirmation, so it is not suitable for unattended SeaTable schedules as-is. WhatsApp acceptance followed by a failed SeaTable update can lead to a duplicate send on retry. Validate the runtime and test with a safe subset before production use.
