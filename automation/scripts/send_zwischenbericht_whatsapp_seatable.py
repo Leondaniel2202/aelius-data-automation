@@ -1,127 +1,53 @@
-from shared.common import build_form_url, normalize_phone_number, eligible_mentees
+"""WhatsApp Zwischenbericht sender executed inside SeaTable."""
 import os
 from datetime import datetime
 
 import requests
 from seatable_api import Base, context
 
-
-# ============================================================
-# Constants
-# ============================================================
+from shared.forms import build_form_url
+from shared.seatable_client import SeaTableInternalClient, eligible_mentees
+from shared.whatsapp_client import WhatsAppClient
 
 MENTEES_TABLE = "Mentees"
-
 MENTEE_ID_COLUMN = "Mentee-ID"
 FIRST_NAME_COLUMN = "Vorname"
 PHONE_COLUMN = "Telefonnummer"
 SENT_COLUMN = "Zwischenbericht verschickt"
 SENT_AT_COLUMN = "Zwischenbericht versendet am"
-
 FORM_URL = "https://cloud.seatable.io/dtable/forms/396ef8a7-d532-4ebf-aa04-1efc8657651f/"
-
-META_GRAPH_API = "https://graph.facebook.com/v23.0"
-WHATSAPP_TEMPLATE_NAME = "zwischenbericht_template"
-WHATSAPP_TEMPLATE_LANGUAGE = "de"
-
-# For SeaTable Cloud, set these directly in the script for now.
-WHATSAPP_TOKEN = "REPLACE_ME"
-WHATSAPP_PHONE_NUMBER_ID = "REPLACE_ME"
-
-
-# ============================================================
-# SeaTable
-# ============================================================
-
-
-def get_base() -> Base:
-    base = Base(context.api_token, context.server_url)
-    base.auth()
-    return base
-
-
-
-def get_mentees_to_send(base: Base) -> list[dict]:
-    return eligible_mentees(base.list_rows(MENTEES_TABLE), PHONE_COLUMN, MENTEE_ID_COLUMN, SENT_COLUMN)
-
-
-def mark_as_sent(base: Base, mentee: dict) -> None:
-    base.update_row(
-        MENTEES_TABLE,
-        mentee["_id"],
-        {
-            SENT_COLUMN: True,
-            SENT_AT_COLUMN: datetime.now().astimezone().isoformat(timespec="seconds"),
-        },
-    )
-
-
-# ============================================================
-# WhatsApp
-# ============================================================
-
-
-def send_whatsapp_message(
-    phone_number: str,
-    first_name: str,
-    form_url: str,
-) -> None:
-    response = requests.post(
-        f"{META_GRAPH_API}/{WHATSAPP_PHONE_NUMBER_ID}/messages",
-        headers={
-            "Authorization": f"Bearer {WHATSAPP_TOKEN}",
-            "Content-Type": "application/json",
-        },
-        json={
-            "messaging_product": "whatsapp",
-            "to": normalize_phone_number(phone_number),
-            "type": "template",
-            "template": {
-                "name": WHATSAPP_TEMPLATE_NAME,
-                "language": {"code": WHATSAPP_TEMPLATE_LANGUAGE},
-                "components": [
-                    {
-                        "type": "body",
-                        "parameters": [
-                            {"type": "text", "text": first_name},
-                            {"type": "text", "text": form_url},
-                        ],
-                    }
-                ],
-            },
-        },
-    )
-
-    response.raise_for_status()
-
-
-# ============================================================
-# Main
-# ============================================================
+TEMPLATE = "zwischenbericht_template"
 
 
 def main() -> None:
-    base = get_base()
-
-    mentees = get_mentees_to_send(base)
-
+    base = Base(context.api_token, context.server_url)
+    base.auth()
+    seatable = SeaTableInternalClient(base)
+    mentees = eligible_mentees(seatable.list_rows(MENTEES_TABLE), PHONE_COLUMN, MENTEE_ID_COLUMN, SENT_COLUMN)
     print(f"{len(mentees)} Mentees found")
+    if not mentees:
+        return
 
+    # Configure these in the SeaTable runtime. Never put live credentials in Git or dist.
+    whatsapp = WhatsAppClient(os.environ["WHATSAPP_TOKEN"], os.environ["WHATSAPP_PHONE_NUMBER_ID"])
+    # Require explicit confirmation: do not automatically send on a scheduled execution.
+    if input("Send all messages? [y/N]: ").strip().lower() != "y":
+        print("Cancelled.")
+        return
     for mentee in mentees:
         mentee_id = mentee[MENTEE_ID_COLUMN]
-        first_name = mentee.get(FIRST_NAME_COLUMN) or ""
-        phone_number = mentee[PHONE_COLUMN]
-
-        personalized_url = build_form_url(FORM_URL, mentee_id)
-
-        send_whatsapp_message(
-            phone_number=phone_number,
-            first_name=first_name,
-            form_url=personalized_url,
-        )
-
-        mark_as_sent(base, mentee)
-        print(f"Sent: {mentee_id}")
+        try:
+            whatsapp.send_template(
+                phone=mentee[PHONE_COLUMN], template=TEMPLATE,
+                parameters=[mentee.get(FIRST_NAME_COLUMN) or "", build_form_url(FORM_URL, mentee_id)],
+            )
+            seatable.update_row(MENTEES_TABLE, mentee["_id"], {
+                SENT_COLUMN: True,
+                SENT_AT_COLUMN: datetime.now().astimezone().isoformat(timespec="seconds"),
+            })
+            print(f"Sent: {mentee_id}")
+        except requests.RequestException as error:
+            print(f"FAILED: {mentee_id}: {error}")
 
 
 if __name__ == "__main__":

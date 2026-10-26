@@ -1,19 +1,23 @@
-# SeaTable automations
+# Aelius SeaTable automations
 
-- `scripts/`: executable SeaTable and local helper scripts
-- `shared/`: pure, reusable Python functions
-- `build/`: standalone script builder
-- `tests/`: unit and build checks
+- `scripts/`: entry points (local REST and SeaTable-internal)
+- `shared/seatable_client.py`: lightweight SeaTable REST and internal adapters
+- `shared/whatsapp_client.py`: WhatsApp Cloud API requests
+- `shared/forms.py`: form lookup and personalized URLs
+- `build/`: standalone script bundler
+- `tests/`: offline unit tests
+- `dist/`: generated standalone scripts (gitignored)
 
-Run from the repository root:
+From repository root:
 
 ```bash
-python -m unittest discover -s automation/tests -v
-python automation/build/bundle.py
+uv sync
+uv run python -m unittest discover -s automation/tests -v
+uv run python automation/build/bundle.py
 ```
 
-The build creates `automation/dist/*.py` for manual import into SeaTable. GitHub Actions publishes these files as a downloadable artifact. **It does not deploy or execute scripts.**
+The build generates `automation/dist/*.py`. GitHub Actions runs tests and uploads these files as downloadable artifacts. **Do not commit dist or insert real credentials into generated files.** No deployment to SeaTable or WhatsApp sending is performed by the build.
 
-Only top-level `from shared.common import ...` imports are currently inlined. Keep shared helpers independent of runtime-specific credentials. Scripts that use `seatable_api.context` must execute in SeaTable; external REST scripts still need their own environment variables. Never commit live WhatsApp tokens or other secrets.
+The builder inlines direct imports from `shared/*.py`; nested shared imports and aliases are deliberately unsupported. Local scripts use environment variables (`SEATABLE_TOKEN`, `SEATABLE_ACCOUNT_TOKEN`, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID`). The internal SeaTable script uses `seatable_api.context` for its base and expects WhatsApp credentials from the runtime environment; verify your SeaTable Cloud runtime actually supports secure environment variables before executing. No secrets are bundled.
 
-Note: the existing internal WhatsApp script has no send confirmation or per-recipient retry handling. Review it before production use.
+**Operational caution:** Internal script currently uses interactive confirmation and is not suitable for unattended schedules. Both scripts mark rows sent only after API acceptance, but a failure between WhatsApp acceptance and updating SeaTable can still cause duplicate sends on rerun. Test on a safe subset before using with real recipients.

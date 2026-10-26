@@ -1,7 +1,7 @@
 name: Build SeaTable automations
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**']
     paths: ['automation/**', '.github/workflows/automation.yml']
   pull_request:
     paths: ['automation/**', '.github/workflows/automation.yml']
@@ -11,13 +11,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Install dependencies
+        run: uv sync --frozen
       - name: Test
-        run: python -m unittest discover -s automation/tests -v
+        run: uv run python -m unittest discover -s automation/tests -v
       - name: Bundle scripts
-        run: python automation/build/bundle.py
+        run: uv run python automation/build/bundle.py
       - name: Upload standalone scripts
         uses: actions/upload-artifact@v4
         with:
